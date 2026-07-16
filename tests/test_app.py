@@ -9,13 +9,9 @@ from src.app import app
 
 @pytest.fixture(autouse=True)
 def reset_activities():
-    # Arrange
     app_module.activities.clear()
     app_module.activities.update(copy.deepcopy(app_module._original_activities))
-
     yield
-
-    # Teardown
     app_module.activities.clear()
     app_module.activities.update(copy.deepcopy(app_module._original_activities))
 
