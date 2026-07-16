@@ -1,26 +1,78 @@
+import copy
+
+import pytest
 from fastapi.testclient import TestClient
 
+from src import app as app_module
 from src.app import app
+
+
+@pytest.fixture(autouse=True)
+def reset_activities():
+    # Arrange
+    app_module.activities.clear()
+    app_module.activities.update(copy.deepcopy(app_module._original_activities))
+
+    yield
+
+    # Teardown
+    app_module.activities.clear()
+    app_module.activities.update(copy.deepcopy(app_module._original_activities))
 
 
 client = TestClient(app)
 
 
-def test_unregister_participant_removes_email_from_activity():
-    activity_name = "Chess Club"
-    email = "michael@mergington.edu"
+def test_root_redirects_to_static_index():
+    # Arrange
+    path = "/"
 
-    response = client.delete(f"/activities/{activity_name}/participants/{email}")
+    # Act
+    response = client.get(path, follow_redirects=False)
 
+    # Assert
+    assert response.status_code == 307
+    assert response.headers["location"] == "/static/index.html"
+
+
+def test_get_activities_returns_seed_data():
+    # Arrange
+    path = "/activities"
+
+    # Act
+    response = client.get(path)
+
+    # Assert
     assert response.status_code == 200
-    assert response.json()["message"] == f"Removed {email} from {activity_name}"
+    data = response.json()
+    assert "Chess Club" in data
+    assert data["Chess Club"]["max_participants"] == 12
 
-    activities = client.get("/activities").json()
-    assert email not in activities[activity_name]["participants"]
+
+def test_signup_for_activity_adds_participant():
+    # Arrange
+    activity_name = "Chess Club"
+    email = "newstudent@mergington.edu"
+    path = f"/activities/{activity_name}/signup"
+
+    # Act
+    response = client.post(path, params={"email": email})
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"] == f"Signed up {email} for {activity_name}"
+    assert email in app_module.activities[activity_name]["participants"]
 
 
-def test_unregister_participant_returns_404_when_activity_missing():
-    response = client.delete("/activities/Unknown Activity/participants/test@example.com")
+def test_signup_missing_activity_returns_404():
+    # Arrange
+    activity_name = "Unknown Club"
+    email = "student@example.com"
+    path = f"/activities/{activity_name}/signup"
 
+    # Act
+    response = client.post(path, params={"email": email})
+
+    # Assert
     assert response.status_code == 404
-    assert response.json()["detail"] == "Activity not found"
